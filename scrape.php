@@ -3,7 +3,7 @@
 error_reporting ( E_ALL );
 
 function scrape($url, &$info) {
-  $proxy = 'socks5://localhost:9050';
+  $proxy = 'socks5://localhost:9150';
   $ch = curl_init ( $url );
   curl_setopt($ch, CURLOPT_PROXY, $proxy);
   curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
@@ -15,7 +15,7 @@ function scrape($url, &$info) {
   return $res;
 }
 
-$codes = file_get_contents ( 'codes.csv' );
+$codes = file_get_contents ( 'codes.tsv' );
 $codes = explode ("\n", $codes);
 $codes = array_map ( 'trim', $codes );
 
@@ -27,27 +27,40 @@ foreach ( $codes as $k => $code )
       }
   }
 
-@mkdir('pages', 0700, true);
+$types = array ( 'people' => array ( 'base' => 'http://data.asx.com.au/data/1/company/%s/people',
+                                   'dir' => 'scraped/people'),
+                 'entity' => array ( 'base' => 'http://data.asx.com.au/data/1/company/%s',
+                                     'dir' => 'scraped/entity'));
 
-$u = 'http://www.asx.com.au/asx/research/companyInfo.do?by=asxCode&asxCode=';
 
-foreach ( $codes as $k => $code )
+foreach ( $types as $key => $type )
   {
-    $f = 'pages/' . $code . '.html';
-    if ( ! file_exists ( $f ) )
+    @mkdir($type['dir'], 0700, true);
+  }
+
+foreach ( $codes as $code )
+  {
+    foreach ( $types as $key => $type )
       {
+        $f = $type['dir'] . '/' . $code;
+
+        if ( file_exists ( $f ) )
+          continue;
 
         $info = null;
-        $res = scrape ( $u . $code, $info );
+        $url = sprintf ( $type['base'], $code );
 
-        if ( $info['http_code'] !== 200 )
+        $res = scrape ( $url, $info );
+
+        if ( $info['http_code'] === 200 )
           {
-            print_r ( $info );
-            break;
+            file_put_contents ( $f, $res );
+            printf("%s %s\n", $code, $key);
           }
-
-        file_put_contents ( $f, $res );
-        printf("%s\n", $code);
+        else
+          {
+            fwrite ( STDERR, sprintf("%s %s %s\n", $code, $key, $info['http_code'] ) );
+          }
       }
   }
 

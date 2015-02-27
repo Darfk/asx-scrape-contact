@@ -2,60 +2,77 @@
 
 error_reporting ( E_ALL );
 
+$types = array ( 'people' => array ( 'base' => 'http://data.asx.com.au/data/1/company/%s/people',
+                                   'dir' => 'scraped/people'),
+                 'entity' => array ( 'base' => 'http://data.asx.com.au/data/1/company/%s',
+                                     'dir' => 'scraped/entity'));
 
-//$data = json_decode ( file_get_contents ( 'data.json' ), 1 );
 
-if ( ! $data  ) {
-  $data = array();
+$pages = array();
+
+foreach ( $types as $key => $type )
+  {
+    $pages[$key] = scandir($type['dir']);
+
+
+
+  }
+
+$data = array();
+
+foreach ( $types as $key => $type )
+  {
+    foreach ( $pages[$key] as $page )
+      {
+        if ( in_array ( substr($page, 0, 1), array ( '.', '#' ), true ) ) continue;
+
+        $f = $type['dir'] . '/' . $page;
+
+        if ( ! isset ( $data[$page] ) ) $data[$page] = array();
+
+        $data[$page][$key] = json_decode ( file_get_contents ( $f ), 1 );
+        if ( json_last_error() !== JSON_ERROR_NONE ) unset ( $data[$page][$key] );
+      }
+  }
+
+$rows = array();
+
+foreach ( $data as $entity )
+  {
+    foreach ( array ( 'directors', 'secretaries' ) as $role )
+      {
+        if ( isset ( $entity['people'][$role] ) &&
+             is_array ( $entity['people'][$role] ) &&
+             sizeof ( $entity['people'][$role] ) > 0 )
+          {
+            foreach ( $entity['people'][$role] as $person )
+              {
+                $rows []= array ( $entity['entity']['code'],
+                                  $entity['entity']['name_full'],
+                                  $entity['entity']['web_address'],
+                                  $entity['entity']['phone_number'],
+                                  $entity['entity']['mailing_address'],
+                                  $entity['entity']['phone_number'],
+                                  $person['salutation'],
+                                  $person['first_name'],
+                                  $person['middle_name'],
+                                  $person['last_name'],
+                                  implode ( ',', $person['roles'] )
+                                  );
+              }
+          }
+      }
+  }
+
+function excel ( $a ) {
+  $s = '';
+  foreach ( $a as $i )
+    {
+      $s .= implode ( "\t", str_replace ( array ( "\t", "\n" ), array ( "" ), $i ) ) . "\n";
+    }
+  return $s;
 }
 
-
-$pages = scandir('pages/');
-
-foreach ( $pages as $k => $v )
-  {
-    list ( $slug ) = explode ( '.', $v, 2 );
-
-    if ( in_array ( substr($v, 0, 1), array ( '.', '#' ), true ) ) continue;
-    $page = file_get_contents ( 'pages/'.$v );
-
-    if ( ! $page ) continue;
-
-    $data[$slug] = array();
-    
-    $m = null;
-    
-    preg_match ( '/<title>(.*)- ASX Listed Company Information Fact Sheet<\\/title>/', $page, $m );
-
-    if ( isset ( $m[1] ) )
-      {
-        $data[$slug]['title'] = $m[1];
-      }
-
-    preg_match ( '/<th>Registered Office Address<\\/th>[^<]*<td>([^<]*)<\\/td>/', $page, $m );
-
-    if ( isset ( $m[1] ) )
-      {
-        $data[$slug]['address'] = $m[1];
-      }
-
-    preg_match ( '/<th>Head Office Telephone<\\/th>[^<]*<td>([^<]*)<\\/td>/', $page, $m );
-
-    if ( isset ( $m[1] ) )
-      {
-        $data[$slug]['phone'] = $m[1];
-      }
-    
-  }
-
-$s = "";
-
-foreach ( $data as $k => $v )
-  {
-    $s .=  $k . "\t" . str_replace ( "\t", " ", $v['title'] ) . "\t" . str_replace ( "\t", " ", $v['address'] ) . "\t" . str_replace ( "\t", " ", $v['phone'] ) . "\n";
-  }
-
-file_put_contents ( 'data.csv', $s );
-//file_put_contents ( 'data.json', json_encode ( $data, 1 ) );
+file_put_contents ( 'out.csv', excel ( $rows ) );
 
 ?>
